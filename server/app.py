@@ -4,12 +4,14 @@ from flask_migrate import Migrate
 from flask_restful import Api, Resource
 from models import db, Restaurant, Pizza, RestaurantPizza
 import os
+from flask_cors import CORS
 
 # Setup the app
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DATABASE = os.environ.get("DB_URI", f"sqlite:///{os.path.join(BASE_DIR, 'app.db')}")
 
 app = Flask(__name__)
+cors = CORS(app)
 app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.json.compact = False
@@ -71,30 +73,31 @@ def get_pizzas():
 
 
 
-# POST /restaurant_pizzas
+# Route: POST /restaurant_pizzas
 @app.route("/restaurant_pizzas", methods=["POST"])
 def create_restaurant_pizza():
     data = request.get_json()
-    price = data.get("price")
-    restaurant_id = data.get("restaurant_id")
-    pizza_id = data.get("pizza_id")
 
-    # Validate price
-    if price < 1 or price > 30:
-        return jsonify({"errors": ["Price must be between 1 and 30"]}), 400
+    # Validation of price
+    if data.get("price") is None or not (1 <= data["price"] <= 30):
+        return jsonify({"errors": ["validation errors"]}), 400  
 
-    # Ensure restaurant and pizza exist
-    restaurant = Restaurant.query.get(restaurant_id)
-    pizza = Pizza.query.get(pizza_id)
-    if not restaurant or not pizza:
-        return jsonify({"errors": ["Invalid restaurant or pizza"]}), 400
+    try:
+        restaurant_pizza = RestaurantPizza(
+            price=data["price"],
+            pizza_id=data["pizza_id"],
+            restaurant_id=data["restaurant_id"],
+        )
+        db.session.add(restaurant_pizza)
+        db.session.commit()
 
-    # Create RestaurantPizza
-    restaurant_pizza = RestaurantPizza(price=price, restaurant=restaurant, pizza=pizza)
-    db.session.add(restaurant_pizza)
-    db.session.commit()
+        response_data = restaurant_pizza.to_dict(
+            only=("id", "price", "pizza", "pizza_id", "restaurant", "restaurant_id")
+        )
+        return jsonify(response_data), 201
 
-    return jsonify(restaurant_pizza.to_dict(only=("id", "price", "pizza", "restaurant"))), 201
+    except Exception as e:
+        return jsonify({"errors": [str(e)]}), 400
 
 
 if __name__ == "__main__":
